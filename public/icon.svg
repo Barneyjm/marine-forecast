@@ -1,0 +1,27 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Marine Forecast">
+  <defs>
+    <linearGradient id="sky" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B3D5C"/>
+      <stop offset="1" stop-color="#0F5C7C"/>
+    </linearGradient>
+  </defs>
+
+  <!-- sky -->
+  <rect width="1024" height="1024" fill="url(#sky)"/>
+
+  <!-- wind streaks -->
+  <g stroke="#CFE8F2" stroke-width="16" stroke-linecap="round" fill="none" opacity="0.42">
+    <path d="M296 300 C 430 268, 566 268, 664 294 C 704 305, 726 302, 748 289"/>
+    <path d="M356 388 C 468 364, 588 364, 678 386"/>
+  </g>
+
+  <!-- sea state: three stacked swell bands -->
+  <path d="M0 626 C 190 566, 360 566, 512 610 C 700 664, 860 622, 1024 596 L1024 1024 L0 1024 Z" fill="#1C6C8E"/>
+  <path d="M0 626 C 190 566, 360 566, 512 610 C 700 664, 860 622, 1024 596" stroke="#FFFFFF" stroke-width="6" opacity="0.28" fill="none"/>
+
+  <path d="M0 726 C 190 668, 360 686, 512 724 C 700 770, 880 726, 1024 704 L1024 1024 L0 1024 Z" fill="#3397BD"/>
+  <path d="M0 726 C 190 668, 360 686, 512 724 C 700 770, 880 726, 1024 704" stroke="#FFFFFF" stroke-width="6" opacity="0.30" fill="none"/>
+
+  <path d="M0 832 C 200 782, 360 802, 512 836 C 700 876, 880 838, 1024 818 L1024 1024 L0 1024 Z" fill="#CFEBF5"/>
+  <path d="M0 832 C 200 782, 360 802, 512 836 C 700 876, 880 838, 1024 818" stroke="#FFFFFF" stroke-width="6" opacity="0.55" fill="none"/>
+</svg>
