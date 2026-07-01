@@ -15,6 +15,7 @@ export default {
       let m;
       if ((m = p.match(/^\/api\/forecast\/([A-Z]{3}\d{3})$/))) return json(await forecast(m[1]));
       if ((m = p.match(/^\/api\/alerts\/([A-Z]{3}\d{3})$/))) return json(await alerts(m[1]));
+      if ((m = p.match(/^\/api\/tides\/([A-Z]{3}\d{3})$/))) return json(await tides(m[1]));
     } catch (e) {
       return json({ error: String(e && e.message || e) }, 502);
     }
@@ -53,6 +54,75 @@ async function alerts(zoneId) {
   const r = await nws("/alerts/active/zone/" + zoneId, 60);
   if (!r.ok) throw new Error("alerts HTTP " + r.status);
   return await r.json(); // shape: { features: [...] }
+}
+
+// Tides: the zone is an area, so take its geometry centroid, find the nearest
+// NOAA CO-OPS tide-prediction station, and return upcoming high/low times.
+async function tides(zoneId) {
+  const meta = await (await nws("/zones/forecast/" + zoneId, 86400)).json();
+  const c = centroid(meta.geometry);
+  if (!c) return { station: null, predictions: [] };
+
+  const st = await nearestTideStation(c);
+  if (!st) return { station: null, predictions: [] };
+
+  const predictions = await tidePredictions(st.id);
+  return {
+    station: { id: st.id, name: st.name, miles: Math.round(haversine(c, { lat: +st.lat, lon: +st.lng })) },
+    predictions,
+  };
+}
+
+function centroid(geo) {
+  if (!geo || !geo.coordinates) return null;
+  let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180, n = 0;
+  const walk = (a) => {
+    if (typeof a[0] === "number") {
+      const lon = a[0], lat = a[1];
+      if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat;
+      if (lon < minLon) minLon = lon; if (lon > maxLon) maxLon = lon;
+      n++;
+    } else a.forEach(walk);
+  };
+  walk(geo.coordinates);
+  return n ? { lat: (minLat + maxLat) / 2, lon: (minLon + maxLon) / 2 } : null;
+}
+
+async function nearestTideStation(c) {
+  const r = await fetch(
+    "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json?type=tidepredictions",
+    { cf: { cacheTtl: 604800, cacheEverything: true } }
+  );
+  if (!r.ok) return null;
+  const data = await r.json();
+  let best = null, bestD = Infinity;
+  for (const s of data.stations || []) {
+    const d = haversine(c, { lat: +s.lat, lon: +s.lng });
+    if (d < bestD) { bestD = d; best = s; }
+  }
+  return best;
+}
+
+async function tidePredictions(id) {
+  // Start a day back (UTC) so "now" is covered regardless of the station's
+  // timezone; the client filters to upcoming events. Times come back local.
+  const start = new Date(Date.now() - 24 * 3600 * 1000);
+  const ymd = "" + start.getUTCFullYear() +
+    String(start.getUTCMonth() + 1).padStart(2, "0") + String(start.getUTCDate()).padStart(2, "0");
+  const url = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter" +
+    "?product=predictions&application=marine-forecast&datum=MLLW&interval=hilo" +
+    "&units=english&time_zone=lst_ldt&format=json&range=120&begin_date=" + ymd + "&station=" + id;
+  const r = await fetch(url, { cf: { cacheTtl: 3600, cacheEverything: true } });
+  if (!r.ok) return [];
+  const data = await r.json();
+  return (data.predictions || []).map((p) => ({ t: p.t, type: p.type, v: p.v }));
+}
+
+function haversine(a, b) {
+  const R = 3959, toR = (x) => (x * Math.PI) / 180;
+  const dLat = toR(b.lat - a.lat), dLon = toR(b.lon - a.lon);
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(toR(a.lat)) * Math.cos(toR(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
 }
 
 // Marine zone forecast now lives only inside the office's text product

@@ -171,17 +171,25 @@
     font-family:var(--display); font-weight:700; font-size:14px; color:var(--ink);
     text-transform:uppercase; letter-spacing:.03em;
   }
-  .wk-ico{width:26px; height:26px; flex:0 0 auto}
-  .ico-sun,.ico-partly{color:#E0912A}
-  .ico-storm{color:var(--bad)}
-  .ico-rain{color:#2E7DA0}
-  .ico-cloud{color:#5C7C8A}
-  .ico-fog{color:#7C97A2}
-  .ico-snow{color:#5FA8C4}
-  .ico-wave{color:var(--sea)}
+  .wk-emoji{font-size:25px; line-height:1; height:28px; display:flex; align-items:center; flex:0 0 auto}
   .wk-wind{font-family:var(--display); font-weight:700; font-size:15px; color:var(--ink); font-variant-numeric:tabular-nums; white-space:nowrap}
   .wk-seas{font-size:13px; color:var(--ink-soft); font-variant-numeric:tabular-nums; white-space:nowrap}
   .wk-cond{width:22px; height:4px; border-radius:2px; margin-top:1px; background:var(--c,var(--line-strong))}
+
+  /* Tides */
+  .tides{padding:11px 20px 13px; border-bottom:1px solid var(--line)}
+  .tide-head{
+    font-family:var(--display); font-weight:700; font-size:13px; letter-spacing:.05em;
+    text-transform:uppercase; color:var(--ink-soft); margin-bottom:8px;
+  }
+  .tide-dist{font-weight:400; text-transform:none; letter-spacing:0}
+  .tide-row{display:flex; flex-wrap:wrap; gap:7px}
+  .tide{
+    font-family:var(--display); font-weight:700; font-size:14px; white-space:nowrap;
+    padding:5px 10px; border-radius:8px; font-variant-numeric:tabular-nums;
+  }
+  .t-hi{background:#E4EFF4; color:#0B4F6C}
+  .t-lo{background:#F1EDE3; color:#7A5A18}
 
   /* Hero readout (today, at a glance) */
   .readout{
@@ -462,9 +470,10 @@
     Promise.all(ZONES.map(function(z){
       return Promise.all([
         getJSON("/api/forecast/" + z.id),
-        getJSON("/api/alerts/" + z.id).catch(function(){ return null; })
+        getJSON("/api/alerts/" + z.id).catch(function(){ return null; }),
+        getJSON("/api/tides/" + z.id).catch(function(){ return null; })
       ]).then(function(res){
-        return { zone:z, props:(res[0]&&res[0].properties)||null, alerts:(res[1]&&res[1].features)||[] };
+        return { zone:z, props:(res[0]&&res[0].properties)||null, alerts:(res[1]&&res[1].features)||[], tides:res[2]||null };
       }).catch(function(err){
         return { zone:z, error:err };
       });
@@ -587,6 +596,7 @@
         body = '<div class="msg">No forecast is available for this location right now.</div>';
       } else {
         body = weekHTML(periods) +
+          tideHTML(r.tides) +
           heroHTML(periods[0], adv, warn) +
           (periods.length > 1
             ? '<div class="periods">'+ periods.slice(1).map(periodHTML).join("") +'</div>'
@@ -686,37 +696,59 @@
     var name = pd.name.length > 9 ? pd.name.split(/\s+/)[0] : pd.name;
     return '<div class="wk-day">'+
       '<div class="wk-name">'+esc(name)+'</div>'+
-      weatherIcon(t)+
+      '<div class="wk-emoji" role="img" aria-label="'+esc(weatherLabel(t, w))+'">'+weatherEmoji(t, w)+'</div>'+
       '<div class="wk-wind">'+esc(wind)+'</div>'+
       '<div class="wk-seas">'+esc(seas)+'</div>'+
       '<div class="wk-cond'+(cond ? " cond-"+cond.level : "")+'"></div>'+
     '</div>';
   }
 
-  function weatherIcon(t){
-    var s = t.toLowerCase();
-    if(/tstm|thunder/.test(s)) return svgIcon("storm");
-    if(/\bfog\b/.test(s)) return svgIcon("fog");
-    if(/snow|flurr/.test(s)) return svgIcon("snow");
-    if(/rain|shower|drizzle/.test(s)) return svgIcon("rain");
-    if(/overcast|mostly cloudy|cloudy/.test(s)) return svgIcon("cloud");
-    if(/partly|mostly sunny|few clouds/.test(s)) return svgIcon("partly");
-    if(/sunny|\bclear\b|\bfair\b/.test(s)) return svgIcon("sun");
-    return svgIcon("wave"); // marine default — CWF text is often sky-quiet
+  // One emoji for the day's dominant condition. Hazards (storms, fog) and strong
+  // wind win over plain sky, since those matter most on the water.
+  // Upcoming high/low tides for the nearest station. Predictions come in local
+  // station time ("2026-07-01 09:37"); show events from now on, grouped by day.
+  function tideHTML(td){
+    if(!td || !td.station || !(td.predictions||[]).length) return "";
+    var now = Date.now();
+    var evs = td.predictions.map(function(p){
+      return { d:new Date(p.t.replace(" ","T")), hi:(p.type==="H") };
+    }).filter(function(e){ return !isNaN(e.d) && e.d.getTime() >= now - 90*60*1000; }).slice(0, 6);
+    if(!evs.length) return "";
+
+    var today = new Date().toDateString();
+    var chips = evs.map(function(e){
+      var day = e.d.toDateString()===today ? "" : e.d.toLocaleDateString([], {weekday:"short"})+" ";
+      var time = e.d.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
+      return '<span class="tide '+(e.hi?"t-hi":"t-lo")+'">'+(e.hi?"▲":"▼")+' '+
+        (e.hi?"High":"Low")+' '+esc(day)+time+'</span>';
+    }).join("");
+
+    var dist = td.station.miles!=null ? ' · '+td.station.miles+' mi' : '';
+    return '<div class="tides">'+
+      '<div class="tide-head">Tides — '+esc(td.station.name)+'<span class="tide-dist">'+esc(dist)+'</span></div>'+
+      '<div class="tide-row">'+chips+'</div>'+
+    '</div>';
   }
 
-  function svgIcon(kind){
-    var p = {
-      sun:'<circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"/>',
-      partly:'<circle cx="8.5" cy="8" r="3"/><path d="M8.5 2.2v1.4M2.7 8h1.4M4.4 4l1 1M13.6 4l-1 1"/><path d="M7.5 20h9a3.5 3.5 0 0 0 .3-6.98A5 5 0 0 0 8 12.6 3.75 3.75 0 0 0 7.5 20z"/>',
-      cloud:'<path d="M7 18h10a4 4 0 0 0 .3-7.98A5.5 5.5 0 0 0 6.5 11 4 4 0 0 0 7 18z"/>',
-      rain:'<path d="M7 15h10a4 4 0 0 0 .3-7.98A5.5 5.5 0 0 0 6.5 8 4 4 0 0 0 7 15z"/><path d="M8 18l-1 2.5M12 18l-1 2.5M16 18l-1 2.5"/>',
-      storm:'<path d="M7 14h10a4 4 0 0 0 .3-7.98A5.5 5.5 0 0 0 6.5 7 4 4 0 0 0 7 14z"/><path d="M13 12.5l-3.5 4.5H12l-2.5 4"/>',
-      fog:'<path d="M4 8h16M3 12h18M5 16h14M8 20h9"/>',
-      snow:'<path d="M12 4v16M5 8l14 8M19 8L5 16"/>',
-      wave:'<path d="M2 10c3-3.5 6-3.5 9 0s6 3.5 9 0M2 15.5c3-3.5 6-3.5 9 0s6 3.5 9 0"/>'
-    }[kind] || '';
-    return '<svg class="wk-ico ico-'+kind+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+p+'</svg>';
+  function weatherEmoji(t, w){
+    var s = (t||"").toLowerCase();
+    var gust = (w && (w.gust || w.hi)) || 0;
+    if(/tstm|thunder/.test(s)) return "⛈️";
+    if(/\bfog\b/.test(s)) return "🌫️";
+    if(/snow|flurr|sleet|wintry/.test(s)) return "🌨️";
+    if(/rain|shower|drizzle/.test(s)) return /slight chance|chance of|isolated|scattered/.test(s) ? "🌦️" : "🌧️";
+    if(gust >= 28) return "💨";
+    if(/overcast|mostly cloudy|cloudy/.test(s)) return "☁️";
+    if(/partly sunny|partly cloudy|few clouds/.test(s)) return "⛅";
+    if(/mostly sunny|mostly clear/.test(s)) return "🌤️";
+    if(/sunny|\bclear\b|\bfair\b/.test(s)) return "☀️";
+    if(gust >= 22) return "💨";
+    return "🌊"; // marine default — CWF text is often sky-quiet
+  }
+  function weatherLabel(t, w){
+    return { "⛈️":"Thunderstorms","🌫️":"Fog","🌨️":"Snow","🌦️":"Chance of showers",
+      "🌧️":"Rain","💨":"Windy","☁️":"Cloudy","⛅":"Partly cloudy","🌤️":"Mostly sunny",
+      "☀️":"Sunny","🌊":"At sea" }[weatherEmoji(t, w)] || "Conditions";
   }
 
   /* ---------- Forecast text parsing ---------- */
