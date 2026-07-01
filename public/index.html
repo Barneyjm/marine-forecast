@@ -176,14 +176,12 @@
   .wk-seas{font-size:13px; color:var(--ink-soft); font-variant-numeric:tabular-nums; white-space:nowrap}
   .wk-cond{width:22px; height:4px; border-radius:2px; margin-top:1px; background:var(--c,var(--line-strong))}
 
-  /* Tides */
-  .tides{padding:11px 20px 13px; border-bottom:1px solid var(--line)}
-  .tide-head{
-    font-family:var(--display); font-weight:700; font-size:13px; letter-spacing:.05em;
-    text-transform:uppercase; color:var(--ink-soft); margin-bottom:8px;
+  /* Tides — one caption per card, then each day carries its own chips */
+  .tide-src{
+    padding:12px 20px 0; font-family:var(--display); font-weight:700; font-size:13px;
+    letter-spacing:.05em; text-transform:uppercase; color:var(--ink-soft);
   }
-  .tide-dist{font-weight:400; text-transform:none; letter-spacing:0}
-  .tide-row{display:flex; flex-wrap:wrap; gap:7px}
+  .tide-row{display:flex; flex-wrap:wrap; gap:7px; margin:9px 0 2px}
   .tide{
     font-family:var(--display); font-weight:700; font-size:14px; white-space:nowrap;
     padding:5px 10px; border-radius:8px; font-variant-numeric:tabular-nums;
@@ -191,37 +189,24 @@
   .t-hi{background:#E4EFF4; color:#0B4F6C}
   .t-lo{background:#F1EDE3; color:#7A5A18}
 
-  /* Hero readout (today, at a glance) */
-  .readout{
-    display:flex; flex-wrap:wrap; gap:12px 28px; align-items:flex-start;
-    padding:15px 20px 14px; border-left:6px solid var(--c,var(--line-strong));
-  }
-  .ro-name{
-    width:100%; font-family:var(--display); font-weight:700; font-size:15px;
-    letter-spacing:.08em; text-transform:uppercase; color:var(--c,var(--ink-soft)); margin-bottom:2px;
-  }
-  .ro-metric{min-width:88px}
-  .ro-label{font-family:var(--display); font-weight:700; font-size:14px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-soft)}
-  .ro-value{
-    font-family:var(--display); font-weight:700; font-size:32px; line-height:1.12;
-    color:var(--ink); font-variant-numeric:tabular-nums;
-  }
-  .ro-unit{font-size:19px; font-weight:700; color:var(--ink-soft)}
-  .ro-sub{font-size:15px; color:var(--ink-soft); margin-top:2px}
-  .ro-word{font-family:var(--display); font-weight:700; font-size:27px; line-height:1.12; color:var(--c,var(--ink))}
-  .now-text{padding:0 20px 16px; margin:0; font-size:18px; color:var(--ink)}
-
-  /* Later periods */
-  .periods{padding:2px 20px 12px}
-  .period{padding:14px 0; border-top:1px solid var(--line)}
-  .p-top{display:flex; align-items:center; gap:11px; flex-wrap:wrap}
-  .p-name{font-family:var(--display); font-weight:700; font-size:19px; color:var(--ink)}
+  /* Per-day block: header, that day's tides, then the forecast detail */
+  .day{padding:15px 20px 16px; border-top:1px solid var(--line)}
+  .day.today{border-top:none; border-left:6px solid var(--c,var(--line-strong))}
+  .day-head{display:flex; align-items:center; gap:11px; flex-wrap:wrap}
+  .day-name{font-family:var(--display); font-weight:700; font-size:22px; color:var(--navy)}
+  .day.today .day-name{font-size:25px}
+  .day-emoji{font-size:23px; line-height:1}
   .p-cond{
-    font-family:var(--display); font-weight:700; font-size:13px; letter-spacing:.04em;
-    text-transform:uppercase; color:#fff; background:var(--c,var(--ink-soft));
-    padding:3px 9px; border-radius:6px;
+    margin-left:auto; font-family:var(--display); font-weight:700; font-size:13px;
+    letter-spacing:.04em; text-transform:uppercase; color:#fff;
+    background:var(--c,var(--ink-soft)); padding:4px 10px; border-radius:6px;
   }
-  .p-summary{font-size:17px; font-weight:600; color:var(--ink); margin:6px 0 3px}
+  .day-periods{display:flex; flex-direction:column; gap:13px; margin-top:12px}
+  .dp-label{
+    font-family:var(--display); font-weight:700; font-size:12px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--ink-faint);
+  }
+  .p-summary{font-size:17px; font-weight:600; color:var(--ink); margin:2px 0 3px}
   .p-text{font-size:16px; color:var(--ink-soft); margin:0}
 
   /* Messages / skeletons */
@@ -595,12 +580,14 @@
       if(!periods.length){
         body = '<div class="msg">No forecast is available for this location right now.</div>';
       } else {
-        body = weekHTML(periods) +
-          tideHTML(r.tides) +
-          heroHTML(periods[0], adv, warn) +
-          (periods.length > 1
-            ? '<div class="periods">'+ periods.slice(1).map(periodHTML).join("") +'</div>'
-            : "");
+        var groups  = groupPeriodsByDay(periods);
+        var tideMap = tidesByDate(r.tides && r.tides.predictions);
+        var src = (r.tides && r.tides.station)
+          ? '<div class="tide-src">Tides &mdash; '+esc(r.tides.station.name)+
+            (r.tides.station.miles!=null ? ' · '+r.tides.station.miles+' mi' : '')+'</div>'
+          : "";
+        body = weekHTML(periods) + src +
+          groups.map(function(g, i){ return dayBlockHTML(g, tideMap, i, adv, warn); }).join("");
       }
       card.innerHTML = head + body;
       wireRemove(card, z.id);
@@ -611,66 +598,6 @@
   function wireRemove(card, id){
     var rm = card.querySelector(".zremove");
     if(rm) rm.addEventListener("click", function(){ removeZone(id); });
-  }
-
-  // First period — big, glanceable readout.
-  function heroHTML(pd, adv, warn){
-    var t = pd.detailedForecast || "";
-    var w = parseWind(t), s = parseSeas(t);
-    var cond = conditionFor(w, s ? s.hi : null, adv, warn);
-    var blocks = "";
-
-    if(w){
-      var wr = fmtRange(w.lo, w.hi);
-      if(w.dir || wr){
-        blocks += metric("Wind", (w.dir ? esc(w.dir)+" " : "") + (wr||""), wr ? "kt" : "",
-                         w.gust ? "gusts to " + w.gust + " kt" : "");
-      }
-    }
-    if(s){
-      var sr = fmtRange(s.lo, s.hi);
-      blocks += sr ? metric("Seas", sr, "ft", "") : metric("Seas", esc(s.label), "", "");
-    }
-    if(cond){
-      blocks += '<div class="ro-metric"><div class="ro-label">Conditions</div>'+
-                '<div class="ro-word">'+esc(cond.label)+'</div></div>';
-    }
-
-    var readout = blocks
-      ? '<div class="readout'+(cond ? " cond-"+cond.level : "")+'">'+
-          '<div class="ro-name">'+esc(pd.name)+'</div>'+ blocks +
-        '</div>'
-      : '';
-    return readout + '<p class="now-text">'+esc(cleanText(t))+'</p>';
-  }
-  function metric(label, val, unit, sub){
-    return '<div class="ro-metric"><div class="ro-label">'+label+'</div>'+
-      '<div class="ro-value">'+val+(unit ? ' <span class="ro-unit">'+unit+'</span>' : '')+'</div>'+
-      (sub ? '<div class="ro-sub">'+esc(sub)+'</div>' : '')+'</div>';
-  }
-
-  // Later periods — one glanceable summary line plus the full text.
-  function periodHTML(pd){
-    var t = pd.detailedForecast || "";
-    var w = parseWind(t), s = parseSeas(t);
-    var cond = conditionFor(w, s ? s.hi : null, false, false);
-    var parts = [];
-    if(w){
-      var wr = fmtRange(w.lo, w.hi);
-      if(w.dir || wr) parts.push((w.dir ? w.dir+" " : "") + (wr||"") + " kt" + (w.gust ? ", gusts "+w.gust : ""));
-    }
-    if(s){
-      var sr = fmtRange(s.lo, s.hi);
-      parts.push("seas " + (sr ? sr + " ft" : s.label));
-    }
-    var summary = parts.join("  ·  ");
-    return '<div class="period">'+
-      '<div class="p-top"><span class="p-name">'+esc(pd.name)+'</span>'+
-        (cond ? '<span class="p-cond cond-'+cond.level+'">'+esc(cond.label)+'</span>' : '')+
-      '</div>'+
-      (summary ? '<div class="p-summary">'+esc(summary)+'</div>' : '')+
-      '<p class="p-text">'+esc(cleanText(t))+'</p>'+
-    '</div>';
   }
 
   // Traditional week-at-a-glance: one column per day (day periods; keep a
@@ -688,49 +615,112 @@
 
   function weekCellHTML(pd){
     var t = pd.detailedForecast || "";
-    var w = parseWind(t), s = parseSeas(t);
-    var cond = conditionFor(w, s ? s.hi : null, false, false);
+    var w = parseWind(t), s = parseSeas(t), seasHi = s ? s.hi : null;
+    var cond = conditionFor(w, seasHi, false, false);
     var wr = w ? fmtRange(w.lo, w.hi) : "";
     var wind = w ? ((w.dir ? w.dir+" " : "") + (wr || (w.gust ? "g"+w.gust : ""))).trim() : "—";
     var seas = s ? (fmtRange(s.lo, s.hi) ? fmtRange(s.lo, s.hi)+" ft" : s.label) : "";
     var name = pd.name.length > 9 ? pd.name.split(/\s+/)[0] : pd.name;
     return '<div class="wk-day">'+
       '<div class="wk-name">'+esc(name)+'</div>'+
-      '<div class="wk-emoji" role="img" aria-label="'+esc(weatherLabel(t, w))+'">'+weatherEmoji(t, w)+'</div>'+
+      '<div class="wk-emoji" role="img" aria-label="'+esc(weatherLabel(t, w, seasHi))+'">'+weatherEmoji(t, w, seasHi)+'</div>'+
       '<div class="wk-wind">'+esc(wind)+'</div>'+
       '<div class="wk-seas">'+esc(seas)+'</div>'+
       '<div class="wk-cond'+(cond ? " cond-"+cond.level : "")+'"></div>'+
     '</div>';
   }
 
-  // One emoji for the day's dominant condition. Hazards (storms, fog) and strong
-  // wind win over plain sky, since those matter most on the water.
-  // Upcoming high/low tides for the nearest station. Predictions come in local
-  // station time ("2026-07-01 09:37"); show events from now on, grouped by day.
-  function tideHTML(td){
-    if(!td || !td.station || !(td.predictions||[]).length) return "";
-    var now = Date.now();
-    var evs = td.predictions.map(function(p){
-      return { d:new Date(p.t.replace(" ","T")), hi:(p.type==="H") };
-    }).filter(function(e){ return !isNaN(e.d) && e.d.getTime() >= now - 90*60*1000; }).slice(0, 6);
-    if(!evs.length) return "";
+  /* ---------- Per-day detail (tides + forecast) ---------- */
 
-    var today = new Date().toDateString();
-    var chips = evs.map(function(e){
-      var day = e.d.toDateString()===today ? "" : e.d.toLocaleDateString([], {weekday:"short"})+" ";
+  // Group day/night periods into calendar days so each day carries its own
+  // tides and forecast text.
+  function groupPeriodsByDay(periods){
+    var groups = [], byKey = {};
+    periods.forEach(function(pd){
+      var d = periodDate(pd.name), key = d.toDateString();
+      if(!byKey[key]){ byKey[key] = { date:d, key:key, periods:[] }; groups.push(byKey[key]); }
+      byKey[key].periods.push(pd);
+    });
+    return groups;
+  }
+
+  // Best-effort date for a period from its name (marine text has no per-period
+  // timestamps): "Today/Tonight" = today; a weekday name = its next occurrence.
+  function periodDate(name){
+    var now = new Date(), base = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var n = (name||"").toLowerCase();
+    if(/today|tonight|this (morning|afternoon|evening)|overnight|rest of/.test(n)) return base;
+    // Use the first weekday mentioned, so "Sat Night through Sun Night" is Saturday.
+    var days = ["sun","mon","tue","wed","thu","fri","sat"];
+    var bestI = -1, bestPos = Infinity;
+    for(var i=0;i<7;i++){ var pos = n.indexOf(days[i]); if(pos > -1 && pos < bestPos){ bestPos = pos; bestI = i; } }
+    if(bestI > -1){
+      var d = new Date(base);
+      for(var k=0;k<8;k++){ if(d.getDay()===bestI) return d; d.setDate(d.getDate()+1); }
+    }
+    return base;
+  }
+
+  function tidesByDate(preds){
+    var map = {};
+    (preds||[]).forEach(function(p){
+      var d = new Date(p.t.replace(" ","T"));
+      if(isNaN(d)) return;
+      var key = d.toDateString();
+      (map[key] = map[key] || []).push({ d:d, hi:(p.type==="H") });
+    });
+    return map;
+  }
+
+  function tideRowHTML(events){
+    if(!events || !events.length) return "";
+    var chips = events.map(function(e){
       var time = e.d.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
-      return '<span class="tide '+(e.hi?"t-hi":"t-lo")+'">'+(e.hi?"▲":"▼")+' '+
-        (e.hi?"High":"Low")+' '+esc(day)+time+'</span>';
+      return '<span class="tide '+(e.hi?"t-hi":"t-lo")+'">'+(e.hi?"▲":"▼")+' '+(e.hi?"High":"Low")+' '+time+'</span>';
+    }).join("");
+    return '<div class="tide-row">'+chips+'</div>';
+  }
+
+  // One calendar day: header (name, emoji, condition), that day's tides, then
+  // the forecast detail for each period in the day.
+  function dayBlockHTML(group, tideMap, idx, adv, warn){
+    var isToday = idx === 0;
+    var lead = group.periods[0], lt = lead.detailedForecast || "";
+    var w = parseWind(lt), s = parseSeas(lt), seasHi = s ? s.hi : null;
+    var cond = conditionFor(w, seasHi, isToday ? adv : false, isToday ? warn : false);
+    var label = isToday ? "Today" : group.date.toLocaleDateString([], {weekday:"long"});
+
+    var periodsHTML = group.periods.map(function(pd){
+      var pt = pd.detailedForecast || "", pw = parseWind(pt), ps = parseSeas(pt);
+      var sub = /night|tonight|overnight/i.test(pd.name) ? "Night" : "Day";
+      var parts = [];
+      if(pw){ var wr = fmtRange(pw.lo, pw.hi); if(pw.dir || wr) parts.push((pw.dir?pw.dir+" ":"")+(wr||"")+" kt"+(pw.gust?", gusts "+pw.gust:"")); }
+      if(ps){ var sr = fmtRange(ps.lo, ps.hi); parts.push("seas "+(sr?sr+" ft":ps.label)); }
+      var summary = parts.join("  ·  ");
+      return '<div class="dp">'+
+        '<div class="dp-label">'+sub+'</div>'+
+        (summary ? '<div class="p-summary">'+esc(summary)+'</div>' : '')+
+        '<p class="p-text">'+esc(cleanText(pt))+'</p>'+
+      '</div>';
     }).join("");
 
-    var dist = td.station.miles!=null ? ' · '+td.station.miles+' mi' : '';
-    return '<div class="tides">'+
-      '<div class="tide-head">Tides — '+esc(td.station.name)+'<span class="tide-dist">'+esc(dist)+'</span></div>'+
-      '<div class="tide-row">'+chips+'</div>'+
+    return '<div class="day'+(isToday?" today":"")+(cond?" cond-"+cond.level:"")+'">'+
+      '<div class="day-head">'+
+        '<span class="day-name">'+esc(label)+'</span>'+
+        '<span class="day-emoji" role="img" aria-label="'+esc(weatherLabel(lt, w, seasHi))+'">'+weatherEmoji(lt, w, seasHi)+'</span>'+
+        (cond ? '<span class="p-cond cond-'+cond.level+'">'+esc(cond.label)+'</span>' : '')+
+      '</div>'+
+      tideRowHTML(tideMap[group.key]) +
+      '<div class="day-periods">'+periodsHTML+'</div>'+
     '</div>';
   }
 
-  function weatherEmoji(t, w){
+  /* ---------- Weather emoji ---------- */
+
+  // One emoji for the day's dominant condition. Hazards (storms, fog) and strong
+  // wind win over plain sky; a real wave shows only for genuinely rough seas, so
+  // a calm day never gets an alarming wave.
+  function weatherEmoji(t, w, seasHi){
     var s = (t||"").toLowerCase();
     var gust = (w && (w.gust || w.hi)) || 0;
     if(/tstm|thunder/.test(s)) return "⛈️";
@@ -738,17 +728,18 @@
     if(/snow|flurr|sleet|wintry/.test(s)) return "🌨️";
     if(/rain|shower|drizzle/.test(s)) return /slight chance|chance of|isolated|scattered/.test(s) ? "🌦️" : "🌧️";
     if(gust >= 28) return "💨";
+    if(seasHi != null && seasHi >= 6) return "🌊";  // genuinely rough seas
     if(/overcast|mostly cloudy|cloudy/.test(s)) return "☁️";
     if(/partly sunny|partly cloudy|few clouds/.test(s)) return "⛅";
     if(/mostly sunny|mostly clear/.test(s)) return "🌤️";
     if(/sunny|\bclear\b|\bfair\b/.test(s)) return "☀️";
     if(gust >= 22) return "💨";
-    return "🌊"; // marine default — CWF text is often sky-quiet
+    return "🌤️";  // calm, sky not stated — pleasant default
   }
-  function weatherLabel(t, w){
+  function weatherLabel(t, w, seasHi){
     return { "⛈️":"Thunderstorms","🌫️":"Fog","🌨️":"Snow","🌦️":"Chance of showers",
-      "🌧️":"Rain","💨":"Windy","☁️":"Cloudy","⛅":"Partly cloudy","🌤️":"Mostly sunny",
-      "☀️":"Sunny","🌊":"At sea" }[weatherEmoji(t, w)] || "Conditions";
+      "🌧️":"Rain","💨":"Windy","🌊":"Rough seas","☁️":"Cloudy","⛅":"Partly cloudy",
+      "🌤️":"Fair","☀️":"Sunny" }[weatherEmoji(t, w, seasHi)] || "Conditions";
   }
 
   /* ---------- Forecast text parsing ---------- */
