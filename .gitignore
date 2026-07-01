@@ -1,0 +1,11 @@
+# Cloudflare / Wrangler local state — contains account id, geolocation cache, etc.
+.wrangler/
+.dev.vars
+.dev.vars.*
+
+# Dependencies
+node_modules/
+
+# Logs & OS cruft
+*.log
+.DS_Store
